@@ -14,60 +14,115 @@ namespace stdx::details {
 
 // Функция для парсинга значения с учетом спецификатора формата
 template <typename T>
-std::expected<T, scan_error> parse_value_with_format(std::string_view input, std::string_view fmt) {
-    // здесь ваш код
+std::expected<T, scan_error>
+parse_value_with_format(std::string_view input, std::string_view fmt)
+{
+  // здесь ваш код
 }
 
-// Функция для проверки корректности входных данных и выделения из обеих строк интересующих данных для парсинга
-template <typename... Ts>
-std::expected<std::pair<std::vector<std::string_view>, std::vector<std::string_view>>, scan_error>
-parse_sources(std::string_view input, std::string_view format) {
-    std::vector<std::string_view> format_parts;  // Части формата между {}
-    std::vector<std::string_view> input_parts;
-    size_t start = 0;
-    while (true) {
-        size_t open = format.find('{', start);
-        if (open == std::string_view::npos) {
-            break;
-        }
-        size_t close = format.find('}', open);
-        if (close == std::string_view::npos) {
-            break;
-        }
+// =============================================================================
 
-        // Если между предыдущей } и текущей { есть текст,
-        // проверяем его наличие во входной строке
-        if (open > start) {
-            std::string_view between = format.substr(start, open - start);
-            auto pos = input.find(between);
-            if (input.size() < between.size() || pos == std::string_view::npos) {
-                return std::unexpected(scan_error{"Unformatted text in input and format string are different"});
-            }
-            if (start != 0) {
-                input_parts.emplace_back(input.substr(0, pos));
-            }
+using StringV = std::vector<std::string>;
+using PairSS  = std::pair<StringV, StringV>; // ( fmt, input )
 
-            input = input.substr(pos + between.size());
-        }
+using ParseResult = std::expected<PairSS, scan_error>;
 
-        // Сохраняем спецификатор формата (то, что между {})
-        format_parts.push_back(format.substr(open + 1, close - open - 1));
-        start = close + 1;
+// Функция для проверки корректности входных данных и выделения из обеих строк
+// интересующих данных для парсинга.
+ParseResult parse_sources(std::string_view input, std::string_view format)
+{
+  constexpr std::string_view err_format_mismatch =
+    "Unformatted text in input and format string are different";
+
+  //
+  // NOTE: заменил всё на std::string, т.к. мне не нравится, что format_parts и
+  // input_parts здесь локальные переменные, которые наполняются временными
+  // объектами. Получится, что к моменту выхода из данной функции они будут уже
+  // невалидны как и их содержимое. К тому же происхождение данных внутри этих
+  // контейнеров будет неочевидным (т.е. что это, условно, ссылки на временные
+  // объекты, созданные где-то в глубине какой-то функции) и придётся лезть в
+  // эту функцию, чтобы это увидеть. Возможно тут сработает copy elision, но я
+  // не считаю это аргументом в пользу подобного говнокода.
+  //
+  std::vector<std::string> format_parts;  // Части формата между {}
+  std::vector<std::string> input_parts;
+  size_t start = 0;
+  while (true)
+  {
+    size_t open = format.find('{', start);
+    if (open == std::string_view::npos)
+    {
+      break;
     }
 
-    // Проверяем оставшийся текст после последней }
-    if (start < format.size()) {
-        std::string_view remaining_format = format.substr(start);
-        auto pos = input.find(remaining_format);
-        if (input.size() < remaining_format.size() || pos == std::string_view::npos) {
-            return std::unexpected(scan_error{"Unformatted text in input and format string are different"});
-        }
-        input_parts.emplace_back(input.substr(0, pos));
-        input = input.substr(pos + remaining_format.size());
-    } else {
-        input_parts.emplace_back(input);
+    size_t close = format.find('}', open);
+    if (close == std::string_view::npos)
+    {
+      break;
     }
-    return std::pair{format_parts, input_parts};
+
+    // Если между предыдущей } и текущей { есть текст,
+    // проверяем его наличие во входной строке
+    if (open > start)
+    {
+      std::string between = std::string(format.substr(start, open - start));
+      auto pos = input.find(between);
+      if (input.size() < between.size() || pos == std::string_view::npos)
+      {
+        return std::unexpected(scan_error{std::string(err_format_mismatch)});
+      }
+
+      if (start != 0)
+      {
+        input_parts.emplace_back(std::string(input.substr(0, pos)));
+      }
+
+      input = input.substr(pos + between.size());
+    }
+
+    // Сохраняем спецификатор формата (то, что между {})
+    std::string contents = std::string(
+      format.substr(open + 1, close - open - 1)
+    );
+
+    format_parts.push_back(contents);
+
+    start = close + 1;
+  }
+
+  // Проверяем оставшийся текст после последней }
+  if (start < format.size())
+  {
+    std::string remaining_format = std::string(format.substr(start));
+    auto pos = input.find(remaining_format);
+    if (input.size() < remaining_format.size() || pos == std::string_view::npos)
+    {
+      return std::unexpected(scan_error{std::string(err_format_mismatch)});
+    }
+
+    input_parts.emplace_back(
+      std::string(input.substr(0, pos))
+    );
+
+    input = input.substr(pos + remaining_format.size());
+  }
+  else
+  {
+    input_parts.emplace_back(input);
+  }
+
+#ifdef DEBUG_LOGS
+  DebugLog("input parts = %lu, format parts = %lu\n",
+           input_parts.size(), format_parts.size());
+
+  for (size_t i = 0; i < input_parts.size(); i++)
+  {
+    DebugLog("ip[%lu] = '%s' - fp[%lu] = '%s'\n",
+             i, input_parts[i].data(), i, format_parts[i].data());
+  }
+#endif
+
+  return std::pair{format_parts, input_parts};
 }
 
 } // namespace stdx::details
