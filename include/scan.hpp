@@ -32,11 +32,24 @@ scan(std::string_view input, std::string_view format)
     return std::unexpected(details::scan_error(message));
   }
 
+  if (fmt_size == 0)
+  {
+    return std::unexpected(
+      details::scan_error("No conversion specifiers found")
+    );
+  }
+
   details::scan_result<Ts...> result;
 
   // aggregate parse_value_with_format
 
-  // TODO:
+  for (size_t i = 0; i < fmt_size; i++)
+  {
+    const std::string& specifier = res.first[i];
+    const std::string& value     = res.second[i];
+    DebugLog("specifier = '%s', value = '%s'\n",
+             specifier.data(), value.data());
+  }
 
   // return scan_result object
 
