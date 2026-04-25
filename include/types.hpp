@@ -29,10 +29,8 @@ struct scan_result
 {
   std::tuple<Ts...> holder;
 
-  const auto& values()
-  {
-    return holder;
-  }
+  template <size_t Index>
+  auto& get() { return std::get<Index>(holder); }
 };
 
 } // namespace stdx::details

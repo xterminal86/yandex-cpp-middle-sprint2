@@ -41,36 +41,49 @@ scan(std::string_view input, std::string_view format)
 
   details::scan_result<Ts...> result;
 
-  result.values();
+  bool success = true;
+  details::scan_error error;
 
-  /*
-  std::apply(
-    [&res](const auto&... args)
-    {
-      size_t index = 0;
-      (..., ( \
-        details::parse_value_with_format<std::decay_t<decltype(args)>>( \
-          std::string_view(res.second[index].data(), res.second[index].size()), \
-          std::string_view(res.first[index].data(), res.first[index].size()) \
-        ), \
-        index++ ) );
-    },
-    result.holder
-  );
-  */
+  const details::StringV& format_parts = res.first;
+  const details::StringV& input_parts  = res.second;
 
-  for (size_t i = 0; i < fmt_size; i++)
+  // satanic black magic
+  [&]<size_t... Is>(std::index_sequence<Is...>)
   {
-    const std::string& specifier = res.first[i];
-    const std::string& value     = res.second[i];
-    DebugLog("specifier = '%s', value = '%s'\n",
-             specifier.data(), value.data());
-    // auto pr = details::parse_value_with_format<?>(value, specifier);
-  }
+    auto parse_one = [&]<size_t I>()
+    {
+      if (!success)
+      {
+        return;
+      }
+
+      auto parse_result = details::parse_value_with_format<
+        std::tuple_element_t<I, std::tuple<Ts...>>
+      >(input_parts[I], format_parts[I]);
+
+      if (parse_result)
+      {
+        std::get<I>(result.holder) = *parse_result;
+      }
+      else
+      {
+        success = false;
+        error = parse_result.error();
+      }
+    };
+
+    (parse_one.template operator()<Is>(), ...);
+  }(std::index_sequence_for<Ts...>{});
 
   // return scan_result object
-
-  return result;
+  if (success)
+  {
+    return details::scan_result<Ts...>{result.holder};
+  }
+  else
+  {
+    return std::unexpected(error);
+  }
 }
 
 } // namespace stdx
