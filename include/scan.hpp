@@ -41,7 +41,23 @@ scan(std::string_view input, std::string_view format)
 
   details::scan_result<Ts...> result;
 
-  // aggregate parse_value_with_format
+  result.values();
+
+  /*
+  std::apply(
+    [&res](const auto&... args)
+    {
+      size_t index = 0;
+      (..., ( \
+        details::parse_value_with_format<std::decay_t<decltype(args)>>( \
+          std::string_view(res.second[index].data(), res.second[index].size()), \
+          std::string_view(res.first[index].data(), res.first[index].size()) \
+        ), \
+        index++ ) );
+    },
+    result.holder
+  );
+  */
 
   for (size_t i = 0; i < fmt_size; i++)
   {
@@ -49,6 +65,7 @@ scan(std::string_view input, std::string_view format)
     const std::string& value     = res.second[i];
     DebugLog("specifier = '%s', value = '%s'\n",
              specifier.data(), value.data());
+    // auto pr = details::parse_value_with_format<?>(value, specifier);
   }
 
   // return scan_result object

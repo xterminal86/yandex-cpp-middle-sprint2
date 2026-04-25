@@ -28,6 +28,11 @@ template <typename... Ts>
 struct scan_result
 {
   std::tuple<Ts...> holder;
+
+  const auto& values()
+  {
+    return holder;
+  }
 };
 
 } // namespace stdx::details

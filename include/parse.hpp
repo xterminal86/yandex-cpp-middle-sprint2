@@ -15,6 +15,7 @@ namespace stdx::details {
 const std::string kErrOutOfRange      = "Result is out of range";
 const std::string kErrFailedToConvert = "Failed to convert";
 const std::string kErrInvalidType     = "Invalid type";
+const std::string kErrInvalidFormat   = "Invalid format specifier";
 
 template <typename T>
 concept IsInt = std::is_same_v<std::remove_cv_t<T>, int>
@@ -49,88 +50,26 @@ concept SupportedType = IsInt<T>
 
 // =============================================================================
 
-#define CHECK_LIMITS(type)                                  \
-  do {                                                      \
-    if (typeid(T) == typeid(type))                          \
-    {                                                       \
-      if (result < std::numeric_limits<type>::min() or      \
-          result > std::numeric_limits<type>::max())        \
-      {                                                     \
-        return std::unexpected(scan_error(kErrOutOfRange)); \
-      }                                                     \
-    }                                                       \
-  } while (false)
-
-template <IsInt T>
-std::expected<T, scan_error> parse_value(std::string_view input)
+template <SupportedType T>
+requires std::is_integral_v<T> and (std::is_signed_v<T> or std::is_unsigned_v<T>)
+std::expected<T, scan_error> parse_int(std::string_view in)
 {
-  std::expected<T, scan_error> ret;
+  T result;
 
-  errno = 0;
-  char* end;
-  long long result = std::strtoll(input.data(), &end, 0);
-  if (end == input.data())
+  const char* first = in.data();
+  const char* last  = in.data() + in.size();
+
+  auto [ptr, ec] = std::from_chars(first, last, result);
+
+  if (ec == std::errc() and ptr != last)
   {
     return std::unexpected(scan_error(kErrFailedToConvert));
   }
-
-  if (errno == ERANGE)
+  else if (ec == std::errc::invalid_argument)
   {
-    return std::unexpected(scan_error(kErrOutOfRange));
+    return std::unexpected(scan_error(kErrInvalidType));
   }
-
-  CHECK_LIMITS(int8_t);
-  CHECK_LIMITS(int16_t);
-  CHECK_LIMITS(int32_t);
-
-  ret = result;
-
-  return ret;
-}
-
-// =============================================================================
-
-template <IsUInt T>
-std::expected<T, scan_error> parse_value(std::string_view input)
-{
-  std::expected<T, scan_error> ret;
-
-  errno = 0;
-  char* end;
-  unsigned long long result = std::strtoull(input.data(), &end, 0);
-  if (end == input.data())
-  {
-    return std::unexpected(scan_error(kErrFailedToConvert));
-  }
-
-  if (errno == ERANGE)
-  {
-    return std::unexpected(scan_error(kErrOutOfRange));
-  }
-
-  CHECK_LIMITS(uint8_t);
-  CHECK_LIMITS(uint16_t);
-  CHECK_LIMITS(uint32_t);
-
-  ret = result;
-
-  return ret;
-}
-
-// =============================================================================
-
-template <IsFloat T>
-std::expected<T, scan_error> parse_value(std::string_view input)
-{
-  errno = 0;
-  char* end;
-  T result = std::strtof(input.data(), &end);
-  if (end == input.data())
-  {
-    return std::unexpected(scan_error(kErrFailedToConvert));
-  }
-
-  if (errno == ERANGE)
+  else if (ec == std::errc::result_out_of_range)
   {
     return std::unexpected(scan_error(kErrOutOfRange));
   }
@@ -140,18 +79,26 @@ std::expected<T, scan_error> parse_value(std::string_view input)
 
 // =============================================================================
 
-template <IsDouble T>
-std::expected<T, scan_error> parse_value(std::string_view input)
+template <SupportedType T>
+requires std::is_floating_point_v<T>
+std::expected<T, scan_error> parse_float(std::string_view in)
 {
-  errno = 0;
-  char* end;
-  T result = std::strtod(input.data(), &end);
-  if (end == input.data())
+  T result;
+
+  const char* first = in.data();
+  const char* last  = in.data() + in.size();
+
+  auto [ptr, ec] = std::from_chars(first, last, result);
+
+  if (ec == std::errc() and ptr != last)
   {
     return std::unexpected(scan_error(kErrFailedToConvert));
   }
-
-  if (errno == ERANGE)
+  else if (ec == std::errc::invalid_argument)
+  {
+    return std::unexpected(scan_error(kErrInvalidType));
+  }
+  else if (ec == std::errc::result_out_of_range)
   {
     return std::unexpected(scan_error(kErrOutOfRange));
   }
@@ -166,95 +113,85 @@ template <SupportedType T>
 std::expected<T, scan_error>
 parse_value_with_format(std::string_view input, std::string_view fmt)
 {
-  std::expected<T, scan_error> pr;
-
-  if (fmt == "%d")
+  if constexpr (std::is_integral_v<T> and std::is_signed_v<T>)
   {
-    DebugLog("Parsing integer...\n");
-
-    if      (typeid(T) == typeid(int))     pr = parse_value<int>(input);
-    else if (typeid(T) == typeid(int8_t))  pr = parse_value<int8_t>(input);
-    else if (typeid(T) == typeid(int16_t)) pr = parse_value<int16_t>(input);
-    else if (typeid(T) == typeid(int32_t)) pr = parse_value<int32_t>(input);
-    else if (typeid(T) == typeid(int64_t)) pr = parse_value<int64_t>(input);
-    else return std::unexpected(scan_error(kErrInvalidType));
-  }
-  else if (fmt == "%u")
-  {
-    DebugLog("Parsing unsigned integer...\n");
-
-    if      (typeid(T) == typeid(uint))     pr = parse_value<uint>(input);
-    else if (typeid(T) == typeid(uint8_t))  pr = parse_value<uint8_t>(input);
-    else if (typeid(T) == typeid(uint16_t)) pr = parse_value<uint16_t>(input);
-    else if (typeid(T) == typeid(uint32_t)) pr = parse_value<uint32_t>(input);
-    else if (typeid(T) == typeid(uint64_t)) pr = parse_value<uint64_t>(input);
-    else return std::unexpected(scan_error(kErrInvalidType));
-  }
-  else if (fmt == "%f")
-  {
-    DebugLog("Parsing floating point value...\n");
-
-    if      (typeid(T) == typeid(float))  pr = parse_value<float>(input);
-    else if (typeid(T) == typeid(double)) pr = parse_value<double>(input);
-    else return std::unexpected(scan_error(kErrInvalidType));
-  }
-  else if (fmt == "%s")
-  {
-    if (typeid(T) == typeid(std::string))
+    if (fmt == "%d" or fmt.empty())
     {
-      DebugLog("Parsing std::string...\n");
-    }
-    else if (typeid(T) == typeid(std::string_view))
-    {
-      DebugLog("Parsing std::string_view...\n");
-    }
+      auto r = parse_int<T>(input);
+      if (not r)
+      {
+        return std::unexpected(r.error());
+      }
 
-    // TODO:
-    /*
-    if (typeid(T) == typeid(std::string))
-    {
-      pr = parse_value<std::string>(input);
-    }
-    else if (typeid(T) == typeid(std::string_view))
-    {
-      pr = parse_value<std::string_view>(input);
-    }
-    else return std::unexpected(scan_error(kErrInvalidType));
-    */
-  }
-  else
-  {
-    std::string message =
-      std::vformat("Invalid format specifier '{}'",
-                   std::make_format_args(fmt));
-
-    return std::unexpected(scan_error(message));
-  }
-
-  /*
-  if (fmt == "%d" or fmt == "%s" or fmt == "%u" or fmt == "%f" or fmt.empty())
-  {
-    auto pr = parse_value<T>(input);
-    if (pr)
-    {
-      return pr.value();
+      return r.value();
     }
     else
     {
-      return std::unexpected(pr.error());
+      return std::unexpected(scan_error(kErrInvalidFormat));
+    }
+  }
+  else if constexpr (std::is_integral_v<T> and std::is_unsigned_v<T>)
+  {
+    if (fmt == "%u" or fmt.empty())
+    {
+      auto r = parse_int<T>(input);
+      if (not r)
+      {
+        return std::unexpected(r.error());
+      }
+
+      return r.value();
+    }
+    else
+    {
+      return std::unexpected(scan_error(kErrInvalidFormat));
+    }
+  }
+  else if constexpr (std::is_floating_point_v<T>)
+  {
+    if (fmt == "%f" or fmt.empty())
+    {
+      auto r = parse_float<T>(input);
+      if (not r)
+      {
+        return std::unexpected(r.error());
+      }
+
+      return r.value();
+    }
+    else
+    {
+      return std::unexpected(scan_error(kErrInvalidFormat));
+    }
+  }
+  else if constexpr (std::is_same_v<T, std::string>)
+  {
+    if (fmt == "%s" or fmt.empty())
+    {
+      return std::string(input);
+    }
+    else
+    {
+      return std::unexpected(scan_error(kErrInvalidFormat));
+    }
+  }
+  else if constexpr (std::is_same_v<T, std::string_view>)
+  {
+    if (fmt == "%s" or fmt.empty())
+    {
+      return input;
+    }
+    else
+    {
+      return std::unexpected(scan_error(kErrInvalidFormat));
     }
   }
   else
   {
-    std::string message =
-      std::vformat("Invalid format specifier '{}'",
-                   std::make_format_args(fmt));
-
-    return std::unexpected(scan_error(message));
+    static_assert("Unsupported type");
   }
-  */
 
-  return pr;
+  return std::unexpected(scan_error("Reached the end without returning anything"));
 }
 
 // =============================================================================
