@@ -33,7 +33,7 @@ TEST(Debugging, ParseSources)
 
     if (!pr)
     {
-      std::println("{}", pr.error().message.data());
+      std::println("{}", pr.error().message);
     }
   }
   // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ TEST(Debugging, ParseSources)
 
     if (!pr)
     {
-      std::println("{}", pr.error().message.data());
+      std::println("{}", pr.error().message);
     }
   }
 }
@@ -60,199 +60,173 @@ TEST(Debugging, ParseSources)
 
 // =============================================================================
 
+template <typename T>
+bool TestParseValueWithFormat(std::string_view test_name,
+                              std::string_view value,
+                              std::string_view fmt,
+                              const T expected = T{})
+{
+  DebugLog("{}: ", test_name);
+  auto result = stdx::details::parse_value_with_format<T>(value, fmt);
+  if (!result)
+  {
+    DebugLog("{}\n", result.error().message);
+    return false;
+  }
+  else
+  {
+    if constexpr (std::is_same_v<std::remove_cv_t<T>, float>)
+    {
+      EXPECT_FLOAT_EQ(expected, result.value());
+    }
+    else if constexpr (std::is_same_v<std::remove_cv_t<T>, double>)
+    {
+      EXPECT_DOUBLE_EQ(expected, result.value());
+    }
+    else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::string>)
+    {
+      EXPECT_STRCASEEQ(expected.data(), result.value().data());
+    }
+    else
+    {
+      EXPECT_EQ(expected, result.value());
+    }
+
+    DebugLog("\n");
+    return true;
+  }
+}
+
+// =============================================================================
+
 TEST(Debugging, ParseSourcesInt)
 {
-  {
-    DebugLog("<int>(abc): ");
-    auto result = stdx::details::parse_value_with_format<int>("abc", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
+  ASSERT_TRUE(
+    TestParseValueWithFormat<int32_t>("<int32_t>(2147483647)",
+                                      "2147483647",
+                                      "%d",
+                                      2147483647)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<int32_t>("<int32_t>(-2147483648)",
+                                      "-2147483648",
+                                      "%d",
+                                      -2147483648)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<int64_t>("<int64_t>(100500)",
+                                      "100500",
+                                      "%d",
+                                      100500)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<int64_t>("<int64_t>(100500)",
+                                      "100500",
+                                      "",
+                                      100500)
+  );
   // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int>(invalid specifier): ");
-    auto result = stdx::details::parse_value_with_format<int>("abc", "%f");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int8_t>(128): ");
-    auto result = stdx::details::parse_value_with_format<int8_t>("128", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int8_t>(-129): ");
-    auto result = stdx::details::parse_value_with_format<int8_t>("-129", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int16_t>(65536): ");
-    auto result = stdx::details::parse_value_with_format<int16_t>("65536", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int32_t>(2147483648): ");
-    auto result = stdx::details::parse_value_with_format<int32_t>("2147483648", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int32_t>(2147483647):\n");
-    auto result = stdx::details::parse_value_with_format<int32_t>("2147483647", "%d");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(2147483647, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int32_t>(-2147483649): ");
-    auto result = stdx::details::parse_value_with_format<int32_t>("-2147483649", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int32_t>(-2147483648):\n");
-    auto result = stdx::details::parse_value_with_format<int32_t>("-2147483648", "%d");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(-2147483648, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int64_t>(100500):\n");
-    auto result = stdx::details::parse_value_with_format<int64_t>("100500", "%d");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(100500, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int64_t>(100500):\n");
-    auto result = stdx::details::parse_value_with_format<int64_t>("100500", "");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(100500, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<int64_t>(out of range): ");
-    auto result = stdx::details::parse_value_with_format<int64_t>("999999999999999999999999999", "%d");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
+  ASSERT_FALSE( TestParseValueWithFormat<int>("<int>(abc)", "abc", "%d") );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int>("<int>(invalid specifier)", "abc", "%f")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int8_t>("<int8_t>(128)", "128", "%d")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int8_t>("<int8_t>(-129)", "-129", "%d")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int16_t>("<int16_t>(65536)", "65536", "%d")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int32_t>("<int32_t>(2147483648)",
+                                      "2147483648",
+                                      "%d")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int32_t>("<int32_t>(-2147483649)",
+                                      "-2147483649",
+                                      "%d")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<int64_t>("<int64_t>(out of range)",
+                                      "999999999999999999999999999",
+                                      "%d")
+  );
 }
 
 // =============================================================================
 
 TEST(Debugging, ParseSourcesUInt)
 {
-  {
-    DebugLog("<uint>(abc): ");
-    auto result = stdx::details::parse_value_with_format<unsigned int>("abc", "%u");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
+  ASSERT_TRUE(
+    TestParseValueWithFormat<uint16_t>("<uint16_t>({{}})", "65535", "", 65535)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<uint8_t>("<uint8_t>(128)", "128", "%u", 128)
+  );
   // ---------------------------------------------------------------------------
-  {
-    DebugLog("<uint>(%%f): ");
-    auto result = stdx::details::parse_value_with_format<unsigned int>("abc", "%f");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<uint8_t>(128):\n");
-    auto result = stdx::details::parse_value_with_format<uint8_t>("128", "%u");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(128, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<uint8_t>(-129): ");
-    auto result = stdx::details::parse_value_with_format<uint8_t>("-129", "%u");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<uint16_t>(65536): ");
-    auto result = stdx::details::parse_value_with_format<uint16_t>("65536", "%u");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<uint16_t>({}):\n");
-    auto result = stdx::details::parse_value_with_format<uint16_t>("65535", "");
-    ASSERT_TRUE(result);
-    EXPECT_EQ(65535, result.value());
-  }
+  ASSERT_FALSE(
+    TestParseValueWithFormat<unsigned int>("<uint>(abc)", "abc", "%u")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<unsigned int>("<uint>(%%f)", "abc", "%f")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<uint8_t>("<uint8_t>(-129)", "-129", "%u")
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<uint16_t>("<uint16_t>(65536)", "65536", "%u")
+  );
 }
 
 // =============================================================================
 
 TEST(Debugging, ParseSourcesFloat)
 {
-  {
-    DebugLog("<float>(abc): ");
-    auto result = stdx::details::parse_value_with_format<float>("abc", "%f");
-    ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<float>(123):\n");
-    auto result = stdx::details::parse_value_with_format<float>("123", "%f");
-    ASSERT_TRUE(result);
-    EXPECT_DOUBLE_EQ(123, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<float>(123.456):\n");
-    auto result = stdx::details::parse_value_with_format<float>("123.456", "%f");
-    ASSERT_TRUE(result);
-    EXPECT_FLOAT_EQ(123.456f, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<double>(123.456):\n");
-    auto result = stdx::details::parse_value_with_format<double>("123.456", "%f");
-    ASSERT_TRUE(result);
-    EXPECT_DOUBLE_EQ(123.456, result.value());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<double>({}):\n");
-    auto result = stdx::details::parse_value_with_format<double>("123.456", "");
-    ASSERT_TRUE(result);
-    EXPECT_DOUBLE_EQ(123.456, result.value());
-  }
+  ASSERT_TRUE(
+    TestParseValueWithFormat<float>("<float>(123)", "123", "%f", 123)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<float>("<float>(123.456)",
+                                    "123.456",
+                                    "%f",
+                                    123.456)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<double>("<double>(123.456)",
+                                     "123.456",
+                                     "%f",
+                                     123.456)
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<double>("<double>({{}})",
+                                     "123.456",
+                                     "",
+                                     123.456)
+  );
+  ASSERT_FALSE(
+    TestParseValueWithFormat<float>("<float>(abc)", "abc", "%f")
+  );
 }
 
 // =============================================================================
 
 TEST(Debugging, ParseSourcesString)
 {
-  {
-    DebugLog("<std::string>(lolsus):\n");
-    auto result =
-      stdx::details::parse_value_with_format<std::string>("lolsus", "%s");
-    ASSERT_TRUE(result);
-    EXPECT_STRCASEEQ("lolsus", result.value().data());
-  }
-  // ---------------------------------------------------------------------------
-  {
-    DebugLog("<std::string_view>(Fuck Bees):\n");
-    auto result =
-      stdx::details::parse_value_with_format<std::string_view>("Fuck Bees", "%s");
-    ASSERT_TRUE(result);
-    EXPECT_STRCASEEQ("Fuck Bees", result.value().data());
-  }
+  ASSERT_TRUE(
+    TestParseValueWithFormat<std::string>("<std::string>(lolsus)",
+                                          "lolsus",
+                                          "%s",
+                                          "lolsus")
+  );
+  ASSERT_TRUE(
+    TestParseValueWithFormat<std::string_view>("<std::string_view>(lolsus)",
+                                               "Fuck Bees",
+                                               "%s",
+                                               "Fuck Bees")
+  );
 }
 #endif
 
@@ -266,7 +240,7 @@ TEST(ScanTest, CountMismatch)
       "I want to sum {} and {%f} numbers."
     );
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
   // ---------------------------------------------------------------------------
   {
@@ -275,7 +249,7 @@ TEST(ScanTest, CountMismatch)
       "I want to sum {} and {%f} numbers."
     );
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
   // ---------------------------------------------------------------------------
   {
@@ -284,7 +258,7 @@ TEST(ScanTest, CountMismatch)
       "I want to sum {} and {%f} {} numbers."
     );
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
 }
 
@@ -292,6 +266,12 @@ TEST(ScanTest, CountMismatch)
 
 TEST(ScanTest, SimpleTest)
 {
+  {
+    auto result = stdx::scan("Nothing", "Nothing");
+    ASSERT_FALSE(result);
+    DebugLog("{}\n", result.error().message);
+  }
+  // ---------------------------------------------------------------------------
   {
     auto result = stdx::scan<int, double>(
       "I want to sum 42 and 3.14 numbers.",
@@ -311,7 +291,7 @@ TEST(ScanTest, SimpleTest)
     EXPECT_EQ(1, result.value().get<0>());
     EXPECT_EQ(2, result.value().get<1>());
     EXPECT_EQ(3, result.value().get<2>());
-    EXPECT_STRCASEEQ("lol", result.value().get<3>().data());
+    EXPECT_EQ("lol", result.value().get<3>());
   }
 }
 
@@ -451,8 +431,8 @@ TEST(ScanTest, AllSupported)
   //
   EXPECT_STRCASEEQ("lol", result.value().get<24>().data());
   EXPECT_STRCASEEQ("sus", result.value().get<25>().data());
-  EXPECT_STRCASEEQ("bib", result.value().get<26>().data());
-  EXPECT_STRCASEEQ("bab", result.value().get<27>().data());
+  EXPECT_EQ("bib", result.value().get<26>());
+  EXPECT_EQ("bab", result.value().get<27>());
 }
 
 // =============================================================================
@@ -462,25 +442,43 @@ TEST(ScanTest, NegativeCases)
   {
     auto result = stdx::scan<int>("'this' is not an int", "{} is not an int");
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
   // ---------------------------------------------------------------------------
   {
     auto result =
       stdx::scan<double>("invalid specifier 3.14", "invalid specifier {%p}");
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
   // ---------------------------------------------------------------------------
   {
     auto result = stdx::scan<uint8_t>("overflow 300", "overflow {}");
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
   }
   // ---------------------------------------------------------------------------
   {
     auto result = stdx::scan<uint8_t>("wrong source 3.14", "wrong source {}");
     ASSERT_FALSE(result);
-    DebugLog("%s\n", result.error().message.data());
+    DebugLog("{}\n", result.error().message);
+  }
+  // ---------------------------------------------------------------------------
+  {
+    //
+    // Won't compile because of SupportedType concept.
+    //
+
+    //auto result = stdx::scan<bool>("unsupported type", "unsupported type");
+    //auto result = stdx::scan<char>("unsupported type", "unsupported type");
+    //
+    // 'unsigned char' works (probably because it's the same as uint8_t).
+    // 'char' doesn't though.
+    //
+    //auto result = stdx::scan<char*>("unsupported type", "unsupported type");
+    //auto result = stdx::scan<void>("unsupported type", "unsupported type");
+    //auto result = stdx::scan<void*>("unsupported type", "unsupported type");
+    //auto result = stdx::scan<int&>("unsupported type", "unsupported type");
+    //auto result = stdx::scan<int&&>("unsupported type", "unsupported type");
   }
 }

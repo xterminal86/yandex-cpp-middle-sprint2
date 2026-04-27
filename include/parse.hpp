@@ -18,18 +18,11 @@ const std::string kErrInvalidType     = "Invalid type";
 const std::string kErrInvalidFormat   = "Invalid format specifier";
 
 template <typename T>
-concept IsInt = std::is_same_v<std::remove_cv_t<T>, int>
-             or std::is_same_v<std::remove_cv_t<T>, int8_t>
-             or std::is_same_v<std::remove_cv_t<T>, int16_t>
-             or std::is_same_v<std::remove_cv_t<T>, int32_t>
-             or std::is_same_v<std::remove_cv_t<T>, int64_t>;
+concept IsInt = std::signed_integral<T>
+        and not std::is_same_v<std::remove_cv_t<T>, char>;
 
 template <typename T>
-concept IsUInt = std::is_same_v<std::remove_cv_t<T>, unsigned int>
-              or std::is_same_v<std::remove_cv_t<T>, uint8_t>
-              or std::is_same_v<std::remove_cv_t<T>, uint16_t>
-              or std::is_same_v<std::remove_cv_t<T>, uint32_t>
-              or std::is_same_v<std::remove_cv_t<T>, uint64_t>;
+concept IsUInt = std::unsigned_integral<T>;
 
 template <typename T>
 concept IsFloat = std::is_same_v<std::remove_cv_t<T>, float>;
@@ -50,14 +43,17 @@ concept SupportedType = IsInt<T>
 
 // =============================================================================
 
-template <SupportedType T>
-requires std::is_integral_v<T> and (std::is_signed_v<T> or std::is_unsigned_v<T>)
-std::expected<T, scan_error> parse_int(std::string_view in)
+template <typename T>
+requires IsInt<T> or IsUInt<T> or IsFloat<T> or IsDouble<T>
+[[nodiscard]]
+std::expected<T, scan_error> parse_value(std::string_view input)
 {
+  //DebugLog("{}\n", __PRETTY_FUNCTION__);
+
   T result;
 
-  const char* first = in.data();
-  const char* last  = in.data() + in.size();
+  const char* first = input.data();
+  const char* last  = input.data() + input.size();
 
   auto [ptr, ec] = std::from_chars(first, last, result);
 
@@ -79,31 +75,25 @@ std::expected<T, scan_error> parse_int(std::string_view in)
 
 // =============================================================================
 
-template <SupportedType T>
-requires std::is_floating_point_v<T>
-std::expected<T, scan_error> parse_float(std::string_view in)
+template <typename T>
+requires IsString<T>
+[[nodiscard]]
+std::expected<T, scan_error> parse_value(std::string_view input)
 {
-  T result;
+  //DebugLog("{}\n", __PRETTY_FUNCTION__);
 
-  const char* first = in.data();
-  const char* last  = in.data() + in.size();
-
-  auto [ptr, ec] = std::from_chars(first, last, result);
-
-  if (ec == std::errc() and ptr != last)
+  if constexpr (std::is_same_v<std::remove_cv_t<T>, std::string>)
   {
-    return std::unexpected(scan_error(kErrFailedToConvert));
+    static std::string tmp;
+    tmp = input;
+    return tmp;
   }
-  else if (ec == std::errc::invalid_argument)
+  else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::string_view>)
   {
-    return std::unexpected(scan_error(kErrInvalidType));
-  }
-  else if (ec == std::errc::result_out_of_range)
-  {
-    return std::unexpected(scan_error(kErrOutOfRange));
+    return input;
   }
 
-  return result;
+  return std::unexpected(scan_error("Failed to parse value as string"));
 }
 
 // =============================================================================
@@ -113,90 +103,23 @@ template <SupportedType T>
 std::expected<T, scan_error>
 parse_value_with_format(std::string_view input, std::string_view fmt)
 {
-  if constexpr (std::is_integral_v<T> and std::is_signed_v<T>)
-  {
-    if (fmt == "%d" or fmt.empty())
-    {
-      auto r = parse_int<T>(input);
-      if (not r)
-      {
-        return std::unexpected(r.error());
-      }
+  //DebugLog("{}\n", __PRETTY_FUNCTION__);
 
-      return r.value();
-    }
-    else
-    {
-      return std::unexpected(scan_error(kErrInvalidFormat));
-    }
-  }
-  else if constexpr (std::is_integral_v<T> and std::is_unsigned_v<T>)
+  if (fmt == "%s" or fmt == "%d" or fmt == "%u" or fmt == "%f" or fmt.empty())
   {
-    if (fmt == "%u" or fmt.empty())
-    {
-      auto r = parse_int<T>(input);
-      if (not r)
-      {
-        return std::unexpected(r.error());
-      }
-
-      return r.value();
-    }
-    else
-    {
-      return std::unexpected(scan_error(kErrInvalidFormat));
-    }
-  }
-  else if constexpr (std::is_floating_point_v<T>)
-  {
-    if (fmt == "%f" or fmt.empty())
-    {
-      auto r = parse_float<T>(input);
-      if (not r)
-      {
-        return std::unexpected(r.error());
-      }
-
-      return r.value();
-    }
-    else
-    {
-      return std::unexpected(scan_error(kErrInvalidFormat));
-    }
-  }
-  else if constexpr (std::is_same_v<T, std::string>)
-  {
-    if (fmt == "%s" or fmt.empty())
-    {
-      return std::string(input);
-    }
-    else
-    {
-      return std::unexpected(scan_error(kErrInvalidFormat));
-    }
-  }
-  else if constexpr (std::is_same_v<T, std::string_view>)
-  {
-    if (fmt == "%s" or fmt.empty())
-    {
-      return input;
-    }
-    else
-    {
-      return std::unexpected(scan_error(kErrInvalidFormat));
-    }
+    return parse_value<T>(input);
   }
   else
   {
-    static_assert("Unsupported type");
+    return std::unexpected(scan_error(kErrInvalidFormat));
   }
 
-  return std::unexpected(scan_error("Reached the end without returning anything"));
+  return std::unexpected(scan_error("Failed to parse value with format"));
 }
 
 // =============================================================================
 
-using StringV = std::vector<std::string>;
+using StringV = std::vector<std::string_view>;
 using PairSS  = std::pair<StringV, StringV>; // ( format_parts, input_parts )
 
 using ParseResult = std::expected<PairSS, scan_error>;
@@ -208,30 +131,17 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
 #ifdef DEBUG_LOGS
   static const std::string ruler(80, '=');
 
-  DebugLog("%s\n", ruler.data());
-  DebugLog("input  = '%s'\n", input.data());
-  DebugLog("format = '%s'\n", format.data());
-  DebugLog("%s\n", ruler.data());
+  DebugLog("{}\n", ruler);
+  DebugLog("input  = '{}'\n", input);
+  DebugLog("format = '{}'\n", format);
+  DebugLog("{}\n", ruler);
 #endif
 
   constexpr std::string_view err_format_mismatch =
     "Unformatted text in input and format string are different";
 
-  //
-  // NOTE: заменил всё на std::string, т.к. мне не нравится, что format_parts и
-  // input_parts здесь локальные переменные, которые наполняются временными
-  // объектами. Получится, что к моменту выхода из данной функции они будут уже
-  // невалидны как и их содержимое. К тому же происхождение данных внутри этих
-  // контейнеров будет неочевидным (т.е. что это, условно, ссылки на временные
-  // объекты, созданные где-то в глубине какой-то функции) и придётся лезть в
-  // эту функцию, чтобы это увидеть. Возможно тут сработает copy elision, но я
-  // не считаю это аргументом в пользу подобного говнокода.
-  // Плюс, мне не нравится сам подход, когда в параметры нужно передавать
-  // литералы, т.к. это снижает защиту "от дурака", т.к. string_view это,
-  // как говорится, по сути не более чем glorified pointer.
-  //
-  std::vector<std::string> format_parts;  // Части формата между {}
-  std::vector<std::string> input_parts;
+  std::vector<std::string_view> format_parts;  // Части формата между {}
+  std::vector<std::string_view> input_parts;
   size_t start = 0;
   while (true)
   {
@@ -251,7 +161,7 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
     // проверяем его наличие во входной строке
     if (open > start)
     {
-      std::string between = std::string(format.substr(start, open - start));
+      std::string_view between = format.substr(start, open - start);
       auto pos = input.find(between);
       if (input.size() < between.size() || pos == std::string_view::npos)
       {
@@ -260,18 +170,14 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
 
       if (start != 0)
       {
-        input_parts.emplace_back(std::string(input.substr(0, pos)));
+        input_parts.emplace_back(input.substr(0, pos));
       }
 
       input = input.substr(pos + between.size());
     }
 
     // Сохраняем спецификатор формата (то, что между {})
-    std::string contents = std::string(
-      format.substr(open + 1, close - open - 1)
-    );
-
-    format_parts.push_back(contents);
+    format_parts.push_back(format.substr(open + 1, close - open - 1));
 
     start = close + 1;
   }
@@ -279,16 +185,14 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
   // Проверяем оставшийся текст после последней }
   if (start < format.size())
   {
-    std::string remaining_format = std::string(format.substr(start));
+    std::string_view remaining_format = format.substr(start);
     auto pos = input.find(remaining_format);
     if (input.size() < remaining_format.size() || pos == std::string_view::npos)
     {
       return std::unexpected(scan_error{std::string(err_format_mismatch)});
     }
 
-    input_parts.emplace_back(
-      std::string(input.substr(0, pos))
-    );
+    input_parts.emplace_back(input.substr(0, pos));
 
     input = input.substr(pos + remaining_format.size());
   }
@@ -298,12 +202,12 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
   }
 
 #ifdef DEBUG_LOGS
-  DebugLog("input parts = %lu, format parts = %lu\n",
+  DebugLog("input parts = {}, format parts = {}\n",
            input_parts.size(), format_parts.size());
 
   for (size_t i = 0; i < format_parts.size(); i++)
   {
-    DebugLog("ip[%lu] = '%s', fp[%lu] = '%s'\n",
+    DebugLog("ip[{}] = '{}', fp[{}] = '{}'\n",
              i, input_parts[i].data(), i, format_parts[i].data());
   }
 

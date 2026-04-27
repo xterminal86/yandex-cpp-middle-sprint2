@@ -11,6 +11,8 @@ std::expected<
 >
 scan(std::string_view input, std::string_view format)
 {
+  //DebugLog("{}\n", __PRETTY_FUNCTION__);
+
   // parse_sources
   details::ParseResult pr = details::parse_sources(input, format);
   if (!pr)
@@ -18,7 +20,7 @@ scan(std::string_view input, std::string_view format)
     return std::unexpected(pr.error());
   }
 
-  details::PairSS res = pr.value();
+  const details::PairSS& res = pr.value();
 
   size_t pack_size = sizeof...(Ts);
   size_t fmt_size  = res.first.size();
