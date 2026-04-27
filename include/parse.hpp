@@ -208,7 +208,7 @@ ParseResult parse_sources(std::string_view input, std::string_view format)
   for (size_t i = 0; i < format_parts.size(); i++)
   {
     DebugLog("ip[{}] = '{}', fp[{}] = '{}'\n",
-             i, input_parts[i].data(), i, format_parts[i].data());
+             i, input_parts[i], i, format_parts[i]);
   }
 
   DebugLog("\n");
