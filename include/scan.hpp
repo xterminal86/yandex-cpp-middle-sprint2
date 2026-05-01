@@ -41,7 +41,7 @@ scan(std::string_view input, std::string_view format)
     );
   }
 
-  details::scan_result<Ts...> result;
+  details::scan_result<std::remove_cv_t<Ts>...> result;
 
   bool success = true;
   details::scan_error error;
@@ -60,7 +60,7 @@ scan(std::string_view input, std::string_view format)
       }
 
       auto parse_result = details::parse_value_with_format<
-        std::tuple_element_t<I, std::tuple<Ts...>>
+        std::tuple_element_t<I, std::tuple<std::remove_cv_t<Ts>...>>
       >(input_parts[I], format_parts[I]);
 
       if (parse_result)

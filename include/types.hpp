@@ -16,7 +16,6 @@ namespace stdx::details {
 // Класс для хранения ошибки неуспешного сканирования
 struct scan_error
 {
-  // TODO: add "error code" enum class?
   std::string message;
 };
 

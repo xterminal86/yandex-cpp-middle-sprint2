@@ -437,6 +437,47 @@ TEST(ScanTest, AllSupported)
 
 // =============================================================================
 
+TEST(ScanTest, CV)
+{
+  {
+    auto result = stdx::scan<const int>("const int 44", "const int {}");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(44, result.value().get<0>());
+    // Doesn't compile because it's const.
+    //std::get<0>(result.value().holder) = 33;
+  }
+  // ---------------------------------------------------------------------------
+  {
+    auto result = stdx::scan<volatile int>("volatile int 55", "volatile int {}");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(55, result.value().get<0>());
+    // OK, not const.
+    std::get<0>(result.value().holder) = 33;
+    EXPECT_EQ(33, result.value().get<0>());
+  }
+  // ---------------------------------------------------------------------------
+  {
+    auto result = stdx::scan<
+      volatile int,
+      float,
+      const volatile uint8_t,
+      std::string,
+      const std::string
+    >("mixed: 123 4.56 128 lol sus", "mixed: {} {} {} {} {}");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(123, result.value().get<0>());
+    EXPECT_FLOAT_EQ(4.56, result.value().get<1>());
+    EXPECT_EQ(128, result.value().get<2>());
+    EXPECT_STRCASEEQ("lol", result.value().get<3>().data());
+    result.value().get<3>() = "New string";
+    EXPECT_STRCASEEQ("New string", result.value().get<3>().data());
+    EXPECT_STRCASEEQ("sus", result.value().get<4>().data());
+    //result.value().get<4>() = "Can't do this";
+  }
+}
+
+// =============================================================================
+
 TEST(ScanTest, NegativeCases)
 {
   {
